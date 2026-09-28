@@ -6,10 +6,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSkins: (params) => ipcRenderer.invoke('catalog:getSkins', params),
   getSkinById: (id) => ipcRenderer.invoke('catalog:getSkinById', id),
   getFilters: () => ipcRenderer.invoke('catalog:getFilters'),
+  getWearPrices: (params) => ipcRenderer.invoke('catalog:getWearPrices', params),
+
+  // Patterns & Paint Seeds
+  evaluateSeed: (params) => ipcRenderer.invoke('pattern:evaluateSeed', params),
+  getPatternPresets: () => ipcRenderer.invoke('pattern:getPresets'),
 
   // Market & Pricing
   syncPrices: (currency) => ipcRenderer.invoke('market:syncPrices', currency),
   fetchSteamPrice: (params) => ipcRenderer.invoke('market:fetchSteamPrice', params),
+  testMarket: (params) => ipcRenderer.invoke('markets:test', params),
+  testAllMarkets: (credentials) => ipcRenderer.invoke('markets:testAll', credentials),
+  getMarketQuotes: (params) => ipcRenderer.invoke('markets:getQuotes', params),
+  getCSFloatListings: (params) => ipcRenderer.invoke('csfloat:getListings', params),
 
   // Analysis
   analyzeSkin: (params) => ipcRenderer.invoke('analysis:analyzeSkin', params),

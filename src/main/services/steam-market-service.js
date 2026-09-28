@@ -152,6 +152,54 @@ export class SteamMarketService {
 
     this.isProcessing = false;
   }
+
+  /**
+   * Test connection: checks SCM public quoting and optional Steam Web API key
+   */
+  async testConnection(apiKey) {
+    const startTime = Date.now();
+
+    if (apiKey === 'DEMO_KEY' || apiKey === 'STEAM_DEMO_KEY') {
+      return {
+        status: 'success',
+        isDemo: true,
+        pingMs: 40,
+        message: 'Connected to Steam Web API (Demo Mode)'
+      };
+    }
+
+    try {
+      const res = await fetch('https://steamcommunity.com/market/priceoverview/?currency=3&appid=730&market_hash_name=AK-47%20%7C%20Redline%20(Field-Tested)', {
+        headers: { 'User-Agent': 'CS2-Market-Analyzer/1.0' }
+      });
+      const pingMs = Date.now() - startTime;
+      if (res.ok) {
+        return {
+          status: 'success',
+          pingMs,
+          message: apiKey ? 'Steam Community Market Active + Web API Key Configured' : 'Steam Community Market Public Quoting Active (No Key Needed)'
+        };
+      }
+      if (res.status === 429) {
+        return {
+          status: 'warning',
+          pingMs,
+          message: 'Steam rate limit hit (HTTP 429). An API key or proxy is recommended for high-frequency requests.'
+        };
+      }
+      return {
+        status: 'error',
+        pingMs,
+        message: `Steam returned HTTP ${res.status}`
+      };
+    } catch (e) {
+      return {
+        status: 'error',
+        pingMs: Date.now() - startTime,
+        message: `Network error reaching Steam: ${e.message}`
+      };
+    }
+  }
 }
 
 export const steamMarketService = new SteamMarketService();

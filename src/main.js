@@ -6,6 +6,14 @@ import { registerIpcHandlers } from './main/ipc-handlers.js';
 import { catalogService } from './main/services/catalog-service.js';
 import { priceScheduler } from './main/services/price-scheduler.js';
 
+process.on('uncaughtException', (err) => {
+  console.error('[Main] Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[Main] Unhandled Rejection:', reason);
+});
+
 if (started) {
   app.quit();
 }

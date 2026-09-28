@@ -1,6 +1,7 @@
 import path from 'node:path';
 import fs from 'node:fs';
-import { app } from 'electron';
+import * as electronModule from 'electron';
+const app = electronModule.app || electronModule.default?.app;
 
 class JsonDatabase {
   constructor() {
@@ -18,7 +19,11 @@ class JsonDatabase {
       desktop_notifications: 'true',
       steam_api_key: '',
       skinport_client_id: '',
+      skinport_client_secret: '',
       csfloat_api_key: '',
+      pricempire_api_key: '',
+      dmarket_public_key: '',
+      dmarket_secret_key: '',
     };
     this.initialized = false;
   }
@@ -32,8 +37,56 @@ class JsonDatabase {
       fs.mkdirSync(this.dataDir, { recursive: true });
     }
 
+    this.seedInitialDataIfMissing();
+
     this.loadAll();
     this.initialized = true;
+  }
+
+  seedInitialDataIfMissing() {
+    try {
+      const skinsDest = this.getFilePath('skins');
+      if (fs.existsSync(skinsDest)) {
+        return; // Already exists, no seeding needed
+      }
+
+      // Candidate paths where seed_data might be located
+      const candidates = [
+        // Packaged Electron app extraResource directory
+        process.resourcesPath ? path.join(process.resourcesPath, 'seed_data') : null,
+        // Development / root directory
+        path.join(process.cwd(), 'seed_data'),
+        path.join(__dirname, '..', '..', 'seed_data'),
+        path.join(__dirname, '..', 'seed_data'),
+        path.join(__dirname, 'seed_data')
+      ].filter(Boolean);
+
+      let foundSeedDir = null;
+      for (const dir of candidates) {
+        if (fs.existsSync(path.join(dir, 'skins.json'))) {
+          foundSeedDir = dir;
+          break;
+        }
+      }
+
+      if (!foundSeedDir) {
+        console.warn('[Database] No seed_data directory found. Will download catalog if online.');
+        return;
+      }
+
+      console.log(`[Database] First run detected! Seeding initial data from ${foundSeedDir}...`);
+      const seedFiles = ['skins.json', 'prices.json', 'stickers_cache.json', 'agents_cache.json'];
+      for (const fileName of seedFiles) {
+        const src = path.join(foundSeedDir, fileName);
+        const dest = path.join(this.dataDir, fileName);
+        if (fs.existsSync(src) && !fs.existsSync(dest)) {
+          fs.copyFileSync(src, dest);
+          console.log(`[Database] Successfully seeded ${fileName}`);
+        }
+      }
+    } catch (err) {
+      console.error('[Database] Failed to seed initial data:', err.message);
+    }
   }
 
   getFilePath(name) {

@@ -8,6 +8,47 @@ import Settings from './pages/Settings';
 import SkinDetailModal from './components/SkinDetailModal';
 import { Bell } from 'lucide-react';
 
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('Tab render error caught by ErrorBoundary:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+          <div style={{ fontSize: '2.5rem', marginBottom: '14px' }}>⚠️</div>
+          <h2 style={{ color: '#fff', marginBottom: '8px', fontFamily: 'var(--font-heading)' }}>
+            Error Loading This Tab
+          </h2>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', maxWidth: '500px', margin: '0 auto 20px', fontFamily: 'var(--font-mono)' }}>
+            {this.state.error?.message || 'An unexpected error occurred.'}
+          </p>
+          <button 
+            className="btn btn-primary"
+            onClick={() => {
+              this.setState({ hasError: false, error: null });
+              if (this.props.onReset) this.props.onReset();
+            }}
+          >
+            Reload Dashboard
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [currency, setCurrency] = useState('EUR');
@@ -165,43 +206,45 @@ export default function App() {
           </div>
         </header>
 
-        {/* Tab Views */}
-        {activeTab === 'dashboard' && (
-          <Dashboard 
-            onSelectSkin={setSelectedSkin} 
-            currency={currency} 
-            onNavigateExplorer={() => setActiveTab('explorer')}
-          />
-        )}
-        {activeTab === 'explorer' && (
-          <SkinExplorer 
-            onSelectSkin={setSelectedSkin} 
-            currency={currency} 
-          />
-        )}
-        {activeTab === 'portfolio' && (
-          <Portfolio 
-            onSelectSkin={setSelectedSkin} 
-            currency={currency} 
-          />
-        )}
-        {activeTab === 'alerts' && (
-          <Alerts 
-            onSelectSkin={setSelectedSkin} 
-            currency={currency}
-            onAlertsUpdated={async () => {
-              const stats = await window.electronAPI.getStats();
-              if (stats) setUnreadAlerts(stats.unreadAlerts);
-            }}
-          />
-        )}
-        {activeTab === 'settings' && (
-          <Settings 
-            currency={currency} 
-            setCurrency={setCurrency}
-            onSync={handleSyncPrices}
-          />
-        )}
+        {/* Tab Views with Error Boundary Protection */}
+        <ErrorBoundary key={activeTab} onReset={() => setActiveTab('dashboard')}>
+          {activeTab === 'dashboard' && (
+            <Dashboard 
+              onSelectSkin={setSelectedSkin} 
+              currency={currency} 
+              onNavigateExplorer={() => setActiveTab('explorer')}
+            />
+          )}
+          {activeTab === 'explorer' && (
+            <SkinExplorer 
+              onSelectSkin={setSelectedSkin} 
+              currency={currency} 
+            />
+          )}
+          {activeTab === 'portfolio' && (
+            <Portfolio 
+              onSelectSkin={setSelectedSkin} 
+              currency={currency} 
+            />
+          )}
+          {activeTab === 'alerts' && (
+            <Alerts 
+              onSelectSkin={setSelectedSkin} 
+              currency={currency}
+              onAlertsUpdated={async () => {
+                const stats = await window.electronAPI.getStats();
+                if (stats) setUnreadAlerts(stats.unreadAlerts);
+              }}
+            />
+          )}
+          {activeTab === 'settings' && (
+            <Settings 
+              currency={currency} 
+              setCurrency={setCurrency}
+              onSync={handleSyncPrices}
+            />
+          )}
+        </ErrorBoundary>
       </main>
 
       {/* Detailed Analysis Modal */}

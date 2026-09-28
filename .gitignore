@@ -90,3 +90,6 @@ typings/
 
 # Electron-Forge
 out/
+
+# Large archives
+*.7z

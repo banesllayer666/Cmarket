@@ -129,6 +129,80 @@ export class SkinportService {
       return null;
     }
   }
+
+  /**
+   * Test connection: checks authenticated account or validates public feed connectivity
+   */
+  async testConnection(clientId, clientSecret) {
+    const startTime = Date.now();
+
+    if (clientId === 'DEMO_KEY' || clientId === 'SKINPORT_DEMO_KEY') {
+      return {
+        status: 'success',
+        isDemo: true,
+        pingMs: 32,
+        message: 'Connected to Skinport Sandbox (Demo Mode)',
+        account: { username: 'SkinportDev', balance: '520.00 EUR' }
+      };
+    }
+
+    if (clientId && clientSecret) {
+      try {
+        const authString = Buffer.from(`${clientId.trim()}:${clientSecret.trim()}`).toString('base64');
+        const res = await fetch('https://api.skinport.com/v1/account', {
+          headers: {
+            'Authorization': `Basic ${authString}`,
+            'User-Agent': 'CS2-Market-Analyzer/1.0'
+          }
+        });
+        const pingMs = Date.now() - startTime;
+        if (res.status === 200) {
+          const data = await res.json();
+          return {
+            status: 'success',
+            pingMs,
+            message: 'Authenticated with Skinport Developer API (Client ID & Secret valid)',
+            account: data
+          };
+        }
+        if (res.status === 401) {
+          return {
+            status: 'error',
+            pingMs,
+            message: 'Invalid Client ID or Client Secret (HTTP 401 Unauthorized)'
+          };
+        }
+      } catch (e) {
+        // Fall back to test public feed
+      }
+    }
+
+    // Validate public live items feed
+    try {
+      const res = await fetch('https://api.skinport.com/v1/items?app_id=730&currency=EUR', {
+        headers: { 'User-Agent': 'CS2-Market-Analyzer/1.0' }
+      });
+      const pingMs = Date.now() - startTime;
+      if (res.ok) {
+        return {
+          status: 'success',
+          pingMs,
+          message: 'Skinport Public Live Market Feed Active (Zero Auth Required)'
+        };
+      }
+      return {
+        status: 'error',
+        pingMs,
+        message: `Skinport responded with HTTP ${res.status}`
+      };
+    } catch (err) {
+      return {
+        status: 'error',
+        pingMs: Date.now() - startTime,
+        message: `Network error: ${err.message}`
+      };
+    }
+  }
 }
 
 export const skinportService = new SkinportService();

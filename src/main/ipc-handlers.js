@@ -7,6 +7,9 @@ import { analysisEngine } from './services/analysis-engine.js';
 import { steamInventoryService } from './services/steam-inventory-service.js';
 import { alertEngine } from './services/alert-engine.js';
 import { priceScheduler } from './services/price-scheduler.js';
+import { patternTierService } from './services/pattern-tier-service.js';
+import { marketHubService } from './services/market-hub-service.js';
+import { csFloatService } from './services/csfloat-service.js';
 
 export function registerIpcHandlers() {
   // Catalog
@@ -24,6 +27,19 @@ export function registerIpcHandlers() {
 
   ipcMain.handle('catalog:getFilters', async () => {
     return catalogService.getFilterOptions();
+  });
+
+  ipcMain.handle('catalog:getWearPrices', async (_, { baseName, isStatTrak, currency }) => {
+    return catalogService.getWearPrices(baseName, isStatTrak, currency);
+  });
+
+  // Patterns & Paint Seeds
+  ipcMain.handle('pattern:evaluateSeed', async (_, { skinName, seedNumber }) => {
+    return patternTierService.evaluateSeed(skinName, seedNumber);
+  });
+
+  ipcMain.handle('pattern:getPresets', async () => {
+    return patternTierService.getPresetPatterns();
   });
 
   // Live Market & Prices
@@ -89,6 +105,23 @@ export function registerIpcHandlers() {
       priceScheduler.start();
     }
     return { success: true };
+  });
+
+  // Multi-Market Developer API Handlers
+  ipcMain.handle('markets:test', async (_, { market, credentials }) => {
+    return await marketHubService.testMarket(market, credentials);
+  });
+
+  ipcMain.handle('markets:testAll', async (_, credentials) => {
+    return await marketHubService.testAllMarkets(credentials);
+  });
+
+  ipcMain.handle('markets:getQuotes', async (_, { marketHashName, currency }) => {
+    return await marketHubService.getLiveCrossMarketQuotes(marketHashName, currency);
+  });
+
+  ipcMain.handle('csfloat:getListings', async (_, params) => {
+    return await csFloatService.getListings(params);
   });
 
   // System Stats
