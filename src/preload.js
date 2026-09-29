@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   importSteamInventory: (steamId) => ipcRenderer.invoke('portfolio:importSteam', steamId),
   addManualPortfolioItem: (data) => ipcRenderer.invoke('portfolio:addManual', data),
   removePortfolioItem: (id) => ipcRenderer.invoke('portfolio:remove', id),
+  refreshPortfolioPrices: (currency) => ipcRenderer.invoke('portfolio:refreshPrices', currency),
 
   // Alerts
   getAlerts: (limit) => ipcRenderer.invoke('alerts:get', limit),

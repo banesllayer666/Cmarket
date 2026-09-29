@@ -14,6 +14,7 @@
   --text-muted: #64748b;
   --text-dim: #475569;
 
+  --accent: #6366f1;
   --accent-primary: #6366f1;
   --accent-primary-hover: #4f46e5;
   --accent-glow: rgba(99, 102, 241, 0.25);
@@ -540,6 +541,11 @@ body {
 @keyframes pulse-glow {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.85; transform: scale(0.98); }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 /* Search and Filters Bar */

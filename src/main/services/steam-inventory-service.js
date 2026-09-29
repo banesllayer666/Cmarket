@@ -1,4 +1,4 @@
-import { getDb } from '../database.js';
+﻿import { getDb } from '../database.js';
 
 export class SteamInventoryService {
   extractSteamId(input) {
@@ -37,7 +37,7 @@ export class SteamInventoryService {
     }
 
     if (!res.ok) {
-      throw new Error(`Steam inventory request failed with HTTP ${res.status}`);
+      throw new Error(`Steam inventory request failed with HTTP ${res.status}. Make sure your inventory is set to Public.`);
     }
 
     const data = await res.json();
@@ -64,33 +64,34 @@ export class SteamInventoryService {
 
       let rarityName = 'Common';
       let rarityColor = '#b0c3d9';
+      let wearName = '';
+      let weaponName = '';
+      let itemType = '';
+
       if (desc.tags) {
         const rarityTag = desc.tags.find(t => t.category === 'Rarity');
         if (rarityTag) {
           rarityName = rarityTag.localized_tag_name || rarityTag.name;
-          rarityColor = `#${rarityTag.color}`;
+          rarityColor = rarityTag.color ? `#${rarityTag.color}` : '#b0c3d9';
         }
-      }
-
-      let wearName = '';
-      if (desc.tags) {
         const wearTag = desc.tags.find(t => t.category === 'Exterior');
         if (wearTag) wearName = wearTag.localized_tag_name || wearTag.name;
-      }
 
-      let weaponName = '';
-      if (desc.tags) {
         const weaponTag = desc.tags.find(t => t.category === 'Weapon');
         if (weaponTag) weaponName = weaponTag.localized_tag_name || weaponTag.name;
+
+        const typeTag = desc.tags.find(t => t.category === 'Type');
+        if (typeTag) itemType = typeTag.localized_tag_name || typeTag.name;
       }
 
-      const isStatTrak = marketHashName.includes('StatTrak™');
+      const isStatTrak = marketHashName.includes('StatTrak');
 
       parsedItems.push({
         asset_id: asset.assetid,
         market_hash_name: marketHashName,
         skin_name: desc.name,
         weapon: weaponName,
+        item_type: itemType,
         wear_name: wearName,
         rarity_name: rarityName,
         rarity_color: rarityColor,
@@ -104,17 +105,19 @@ export class SteamInventoryService {
 
   async importToPortfolio(steamId) {
     const items = await this.fetchSteamInventory(steamId);
-    if (!items || items.length === 0) return { count: 0 };
+    if (!items || items.length === 0) {
+      throw new Error('No CS2 items found in this inventory. The inventory may be empty or private.');
+    }
 
     const db = getDb();
     const now = Date.now();
-    const existingIds = new Set(db.portfolio.map(i => i.asset_id));
+    const existingAssetIds = new Set(db.portfolio.map(i => i.asset_id));
 
     let inserted = 0;
     for (const item of items) {
-      if (existingIds.has(item.asset_id)) continue;
+      if (existingAssetIds.has(item.asset_id)) continue;
       db.portfolio.unshift({
-        id: Date.now() + Math.random(),
+        id: now + Math.random(),
         ...item,
         buy_price: 0,
         buy_date: new Date().toISOString().split('T')[0],
@@ -130,33 +133,75 @@ export class SteamInventoryService {
     return { totalFound: items.length, importedCount: inserted };
   }
 
+  // Resolve current price from all sources: skinport first, then steam
+  _resolvePrice(db, marketHashName) {
+    const sp = db.prices.get(`${marketHashName}__skinport`);
+    if (sp && sp.price > 0) return { price: sp.price, source: 'skinport', updated_at: sp.updated_at };
+
+    const st = db.prices.get(`${marketHashName}__steam`);
+    if (st && st.price > 0) return { price: st.price, source: 'steam', updated_at: st.updated_at };
+
+    return { price: 0, source: null, updated_at: null };
+  }
+
+  // Get price ~24h ago from history
+  _get24hAgoPrice(db, marketHashName) {
+    const hist = db.priceHistory.get(marketHashName);
+    if (!hist || hist.length === 0) return null;
+
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    let best = null;
+    for (const point of hist) {
+      if (point.timestamp <= cutoff) {
+        if (!best || point.timestamp > best.timestamp) best = point;
+      }
+    }
+    // Fall back to oldest available if nothing older than 24h yet
+    if (!best && hist.length > 0) best = hist[0];
+    return best ? best.price : null;
+  }
+
   getPortfolio() {
     const db = getDb();
     let totalInvested = 0;
     let totalCurrentValue = 0;
+    let totalValue24hAgo = 0;
 
     const enriched = db.portfolio.map(item => {
-      const priceKey = `${item.market_hash_name}__skinport`;
-      const p = db.prices.get(priceKey);
-
       const buyPrice = item.buy_price || 0;
-      const currentPrice = p?.price || p?.lowest_price || buyPrice;
-      const profitLoss = currentPrice - buyPrice;
+      const { price: currentPrice, source: priceSource } = this._resolvePrice(db, item.market_hash_name);
+      const price24hAgo = this._get24hAgoPrice(db, item.market_hash_name);
+
+      const effectivePrice = currentPrice > 0 ? currentPrice : buyPrice;
+      const profitLoss = buyPrice > 0 ? (effectivePrice - buyPrice) : 0;
       const profitPercent = buyPrice > 0 ? (profitLoss / buyPrice) * 100 : 0;
 
+      let change24h = null;
+      let change24hPercent = null;
+      if (price24hAgo && price24hAgo > 0 && effectivePrice > 0) {
+        change24h = effectivePrice - price24hAgo;
+        change24hPercent = (change24h / price24hAgo) * 100;
+      }
+
       totalInvested += buyPrice;
-      totalCurrentValue += currentPrice;
+      totalCurrentValue += effectivePrice;
+      totalValue24hAgo += (price24hAgo && price24hAgo > 0) ? price24hAgo : effectivePrice;
 
       return {
         ...item,
-        current_price: Math.round(currentPrice * 100) / 100,
+        current_price: Math.round(effectivePrice * 100) / 100,
+        price_source: priceSource,
         profit_loss: Math.round(profitLoss * 100) / 100,
-        profit_percent: Math.round(profitPercent * 10) / 10
+        profit_percent: Math.round(profitPercent * 10) / 10,
+        change_24h: change24h !== null ? Math.round(change24h * 100) / 100 : null,
+        change_24h_percent: change24hPercent !== null ? Math.round(change24hPercent * 10) / 10 : null
       };
     });
 
     const netProfit = totalCurrentValue - totalInvested;
     const netReturnPercent = totalInvested > 0 ? (netProfit / totalInvested) * 100 : 0;
+    const totalChange24h = totalCurrentValue - totalValue24hAgo;
+    const totalChange24hPercent = totalValue24hAgo > 0 ? (totalChange24h / totalValue24hAgo) * 100 : 0;
 
     return {
       items: enriched,
@@ -165,7 +210,9 @@ export class SteamInventoryService {
         totalInvested: Math.round(totalInvested * 100) / 100,
         totalCurrentValue: Math.round(totalCurrentValue * 100) / 100,
         netProfit: Math.round(netProfit * 100) / 100,
-        netReturnPercent: Math.round(netReturnPercent * 10) / 10
+        netReturnPercent: Math.round(netReturnPercent * 10) / 10,
+        totalChange24h: Math.round(totalChange24h * 100) / 100,
+        totalChange24hPercent: Math.round(totalChange24hPercent * 10) / 10
       }
     };
   }
@@ -174,10 +221,16 @@ export class SteamInventoryService {
     const db = getDb();
     const id = Date.now() + Math.random();
 
+    // Build correct market_hash_name: Skinport/Steam uses "Weapon | Skin (Wear)"
+    let marketHashName = (data.market_hash_name || data.skin_name || '').trim();
+    if (data.wear_name && marketHashName && !marketHashName.includes('(')) {
+      marketHashName = `${marketHashName} (${data.wear_name})`;
+    }
+
     db.portfolio.unshift({
       id,
       asset_id: `manual-${Date.now()}`,
-      market_hash_name: data.market_hash_name,
+      market_hash_name: marketHashName,
       skin_name: data.skin_name || data.market_hash_name,
       weapon: data.weapon || '',
       rarity_name: data.rarity_name || 'Classified',
@@ -202,6 +255,36 @@ export class SteamInventoryService {
     db.portfolio = db.portfolio.filter(p => p.id !== id);
     db.save('portfolio');
     return { success: true };
+  }
+
+  // Snapshot current prices into history for 24h tracking
+  refreshPortfolioPrices(currency = 'EUR') {
+    const db = getDb();
+    if (db.portfolio.length === 0) return { snapshotted: 0 };
+
+    const now = Date.now();
+    const ONE_HOUR = 60 * 60 * 1000;
+    let snapshotted = 0;
+
+    for (const item of db.portfolio) {
+      const { price, source } = this._resolvePrice(db, item.market_hash_name);
+      if (price <= 0) continue;
+
+      if (!db.priceHistory.has(item.market_hash_name)) {
+        db.priceHistory.set(item.market_hash_name, []);
+      }
+      const hist = db.priceHistory.get(item.market_hash_name);
+      const lastEntry = hist[hist.length - 1];
+
+      if (!lastEntry || now - lastEntry.timestamp > ONE_HOUR) {
+        hist.push({ source: source || 'portfolio', price, currency, timestamp: now });
+        if (hist.length > 100) hist.shift();
+        snapshotted++;
+      }
+    }
+
+    db.save('history');
+    return { snapshotted };
   }
 }
 

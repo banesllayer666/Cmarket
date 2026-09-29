@@ -76,6 +76,10 @@ export function registerIpcHandlers() {
     return steamInventoryService.removeItem(id);
   });
 
+  ipcMain.handle('portfolio:refreshPrices', async (_, currency) => {
+    return steamInventoryService.refreshPortfolioPrices(currency || priceScheduler.getCurrency());
+  });
+
   // Alerts
   ipcMain.handle('alerts:get', async (_, limit) => {
     return alertEngine.getAlerts(limit);
